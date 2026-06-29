@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: adventure-club
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:adventureclub}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5       # small pool — solo dev, low traffic
+
+  jpa:
+    hibernate:
+      ddl-auto: validate         # Flyway owns the schema, Hibernate just validates
+    show-sql: false
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  ai:
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY}   # export ANTHROPIC_API_KEY=sk-ant-... before running
+      chat:
+        options:
+          model: claude-sonnet-4-6
+          max-tokens: 1024
+          temperature: 0.8       # some creative variance for story generation
+
+logging:
+  level:
+    com.adventureclub: DEBUG
+    org.springframework.ai: INFO

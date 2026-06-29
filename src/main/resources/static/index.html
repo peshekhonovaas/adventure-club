@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Adventure Club — dev test</title>
+    <style>
+        body    { font-family: sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+        h2      { font-weight: 400; }
+        #config { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+        #config label { font-size: 14px; color: #555; }
+        #config input { flex: 1; padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; }
+        #history {
+            border: 1px solid #ddd; border-radius: 8px; padding: 16px;
+            height: 420px; overflow-y: auto; margin-bottom: 12px;
+            background: #fafafa;
+        }
+        .turn    { margin: 10px 0; }
+        .user    { color: #333; }
+        .user strong    { color: #555; }
+        .assistant      { color: #155724; background: #d4edda; border-radius: 6px; padding: 8px 12px; }
+        .assistant strong { color: #0a3622; }
+        .blocked        { color: #721c24; background: #f8d7da; border-radius: 6px; padding: 8px 12px; }
+        #input-row { display: flex; gap: 8px; }
+        #message { flex: 1; padding: 10px; font-size: 15px; border: 1px solid #ccc; border-radius: 6px; }
+        button   { padding: 10px 20px; font-size: 15px; background: #1a7a4a; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+        button:hover { background: #145f3a; }
+        #session-id { font-size: 12px; color: #999; margin-top: 8px; }
+    </style>
+</head>
+<body>
+<h2>Adventure Club — dev test</h2>
+
+<div id="config">
+    <label for="interests">Interests</label>
+    <input id="interests" value="Star wars" />
+    <label for="agentName">My name</label>
+    <input id="agentName" value="Grogu" />
+</div>
+
+<div id="history"></div>
+
+<div id="input-row">
+    <input id="message" placeholder="Type something and press Enter…" autocomplete="off"
+           onkeydown="if(event.key==='Enter') send()" />
+    <button onclick="send()">Send</button>
+</div>
+<div id="session-id">No active session</div>
+
+<script>
+    let sessionId = null;
+
+    async function send() {
+        const msgEl  = document.getElementById('message');
+        const msg    = msgEl.value.trim();
+        if (!msg) return;
+        msgEl.value  = '';
+
+        append('<strong>You:</strong> ' + escHtml(msg), 'user');
+
+        var agentName;
+        try {
+            const res = await fetch('/session/turn', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    sessionId: sessionId,
+                    interests: document.getElementById('interests').value.trim(),
+                    agentName: document.getElementById('agentName').value.trim(),
+                    childMessage: msg
+                })
+            });
+
+            if (!res.ok) {
+                append('Server error: ' + res.status, 'blocked');
+                return;
+            }
+
+            const data = await res.json();
+            sessionId = data.sessionId;
+            document.getElementById('session-id').textContent = 'Session: ' + sessionId;
+
+
+            if (data.blocked) {
+                append('⚠️ Your message was blocked by the safety filter. Try something else!', 'blocked');
+            } else {
+                append(escHtml(document.getElementById('agentName').value.trim()) + ': ' + escHtml(data.storyText), 'assistant');
+            }
+        } catch (e) {
+            append('Could not reach server: ' + e.message, 'blocked');
+        }
+    }
+
+    function append(html, cssClass) {
+        const div  = document.createElement('div');
+        div.className = 'turn ' + cssClass;
+        div.innerHTML = html;
+        const hist = document.getElementById('history');
+        hist.appendChild(div);
+        hist.scrollTop = hist.scrollHeight;
+    }
+
+    function escHtml(str) {
+        return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // Focus the input on load
+    document.getElementById('message').focus();
+</script>
+</body>
+</html>
