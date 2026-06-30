@@ -71,8 +71,8 @@ public class Orchestrator {
 
         // Step 4: call the Story Director with context
         String storyText = storyDirector.nextBeat(
-                session.getAgentName(),
                 session.getInterests(),
+                session.getAgentName(),
                 history,
                 request.childMessage()
         );

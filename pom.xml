@@ -38,6 +38,14 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Loads .env into the Spring Environment so ${DB_*} / ${ANTHROPIC_API_KEY}
+             resolve for both the app and tests, with no shell exports needed. -->
+        <dependency>
+            <groupId>me.paulschwarz</groupId>
+            <artifactId>spring-dotenv</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+
         <!-- Spring AI — Anthropic (auto-configures ChatModel + ChatClient.Builder) -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
@@ -84,6 +92,7 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
     </dependencies>
 
     <build>
