@@ -17,9 +17,9 @@ import org.springframework.stereotype.Component;
  * must succeed independently of the other.
  */
 @Component
-public class SafetyGate {
+public class InputSafetyGate {
 
-    private static final Logger log = LoggerFactory.getLogger(SafetyGate.class);
+    private static final Logger log = LoggerFactory.getLogger(InputSafetyGate.class);
 
     // Week 1: prompt is a constant. Move to classpath:prompts/safety-gate.txt in week 2
     // when you start iterating on it heavily.
@@ -49,7 +49,7 @@ public class SafetyGate {
 
     private final ChatClient chatClient;
 
-    public SafetyGate(ChatClient.Builder builder) {
+    public InputSafetyGate(ChatClient.Builder builder) {
         this.chatClient = builder.build();
     }
 

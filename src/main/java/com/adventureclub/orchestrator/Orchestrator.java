@@ -1,7 +1,8 @@
 package com.adventureclub.orchestrator;
 
 import com.adventureclub.agent.EducationCoachAgent;
-import com.adventureclub.agent.SafetyGate;
+import com.adventureclub.agent.OutputSafetyGate;
+import com.adventureclub.agent.InputSafetyGate;
 import com.adventureclub.agent.StoryDirectorAgent;
 import com.adventureclub.domain.Message;
 import com.adventureclub.domain.Session;
@@ -17,40 +18,63 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 /**
- * Orchestrator — the brain of the agent pipeline.
- * This is DETERMINISTIC CODE, not an LLM. It decides the order of operations:
- *   1. Resolve or create session
- *   2. Run input safety gate
- *   3. If safe → load history → call Story Director
- *   4. Persist both messages
- *   5. Return response
- * Design decision: the orchestrator is plain Java, not an LLM agent.
- * Reason: the pipeline is sequential and stateful. An LLM-as-router adds
- * unpredictability precisely where you want none — especially around step 2.
- * In phase 2 this class will also call the Education Coach before step 3.
- * In phase 3 it will optionally call the Creativity Coach when an image is attached.
+ * Orchestrator — the full agent pipeline with both safety gates.
+ * <p>
+ * Turn flow:
+ * <p>
+ *   [child message]
+ *        ↓
+ *   1. Resolve / create session
+ *        ↓
+ *   2. INPUT SAFETY GATE  ← blocks unsafe child messages
+ *        ↓ (if safe)
+ *   3. Education Coach    ← RAG retrieval from knowledge base
+ *        ↓
+ *   4. Load history
+ *        ↓
+ *   5. Story Director     ← generates story response
+ *        ↓
+ *   6. OUTPUT SAFETY GATE ← blocks unsafe story responses
+ *        ↓ (if safe)
+ *   7. Persist both messages
+ *        ↓
+ *   [child sees response]
+ * <p>
+ * IMPORTANT — only persist messages that passed both gates.
+ * Blocked messages are never written to the database.
+ * Reasons:
+ *   - No record of what the child tried to do
+ *   - No unsafe content accumulates in conversation history
+ *   - Parent dashboard never shows flagged content
+ * <p>
+ * If the output gate blocks, we persist the fallback response
+ * (not the blocked one), so history remains coherent for the
+ * Story Director on the next turn.
  */
 @Service
 public class Orchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(Orchestrator.class);
 
-    private final SafetyGate safetyGate;
+    private final InputSafetyGate inputSafetyGate;
     private final StoryDirectorAgent storyDirector;
     private final EducationCoachAgent educationCoach;
     private final SessionRepository sessionRepository;
     private final MessageRepository messageRepository;
+    private final OutputSafetyGate outputGate;
 
-    public Orchestrator(SafetyGate safetyGate,
+    public Orchestrator(InputSafetyGate inputSafetyGate,
+                        OutputSafetyGate outputGate,
                         EducationCoachAgent educationCoach,
                         StoryDirectorAgent storyDirector,
                         SessionRepository sessionRepository,
                         MessageRepository messageRepository) {
-        this.safetyGate = safetyGate;
-        this.storyDirector = storyDirector;
-        this.sessionRepository = sessionRepository;
-        this.messageRepository = messageRepository;
-        this.educationCoach = educationCoach;
+        this.inputSafetyGate = inputSafetyGate;
+        this.outputGate       = outputGate;
+        this.educationCoach   = educationCoach;
+        this.storyDirector    = storyDirector;
+        this.sessionRepository  = sessionRepository;
+        this.messageRepository  = messageRepository;
     }
 
     @Transactional
@@ -61,7 +85,7 @@ public class Orchestrator {
                 session.getId(), session.getInterests());
 
         // Step 2: input safety gate — runs BEFORE the story agent sees anything
-        if (!safetyGate.isSafe(request.childMessage())) {
+        if (!inputSafetyGate.isSafe(request.childMessage())) {
             // Do not persist blocked messages — no data about what was blocked
             return new TurnResponse(session.getId(), null, true);
         }
@@ -89,12 +113,29 @@ public class Orchestrator {
                 enrichment
         );
 
-        // Step 6: persist both the child's message and the assistant response
-        // Persist child's message first so history ordering is correct on next turn
-        messageRepository.save(new Message(session.getId(), Message.Role.USER, request.childMessage()));
-        messageRepository.save(new Message(session.getId(), Message.Role.ASSISTANT, storyText));
+        // Step 6 — output safety gate
+        // Checks the story response before it reaches the child.
+        // If blocked, replace with a warm fallback and persist that instead.
+        // The child never knows their story was redirected.
+        String responseToSend;
+        if (outputGate.isSafe(storyText)) {
+            responseToSend = storyText;
+        } else {
+            log.warn("Output gate blocked story response — sending fallback for session={}",
+                    session.getId());
+            responseToSend = outputGate.fallback();
+        }
 
-        return new TurnResponse(session.getId(), storyText, false);
+        // Step 7 — persist both messages
+        // We always persist the child's (safe) message.
+        // We persist responseToSend — either the real story or the fallback.
+        // We never persist blocked content.
+        messageRepository.save(new Message(
+                session.getId(), Message.Role.USER, request.childMessage()));
+        messageRepository.save(new Message(
+                session.getId(), Message.Role.ASSISTANT, responseToSend));
+
+        return new TurnResponse(session.getId(), responseToSend, false);
     }
 
     private Session resolveSession(TurnRequest request) {
