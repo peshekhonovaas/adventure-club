@@ -12,10 +12,8 @@ import java.util.List;
 
 /**
  * Story Director — the Game Master agent.
- *
  * Week 1 goal: get this returning a real story response from Claude,
  * with multi-turn memory working. Everything else is scaffolding.
- *
  * What it does NOT do yet (phase 2+):
  * - Pull educational content from the knowledge base (Education Coach handles that)
  * - Return structured JSON with action buttons (just prose for now)
@@ -48,6 +46,16 @@ public class StoryDirectorAgent {
                redirect it somewhere bright.
             8. Your tone is warm, encouraging, and magical.
             9. Do not change the main character during the story.
+            {enrichment_section}
+            """;
+
+    // The enrichment block added to the prompt when the Education Coach
+    // finds relevant knowledge base content. Deliberately short and clear
+    // so it doesn't overwhelm the other instructions.
+    private static final String ENRICHMENT_BLOCK = """
+            EDUCATIONAL CONTEXT — weave this naturally into the story if relevant.
+            Do NOT quote it directly. Use it as inspiration for what {name} says:
+            {enrichment}
             """;
 
     private final ChatClient chatClient;
@@ -64,8 +72,14 @@ public class StoryDirectorAgent {
      * @param childMessage what the child just typed
      * @return the next paragraph of the adventure
      */
-    public String nextBeat(String interests, String agentName, List<Message> history, String childMessage) {
-        String system = SYSTEM_PROMPT_TEMPLATE.replace("{interests}", interests).replace("{name}", agentName);
+    public String nextBeat(String interests, String agentName, List<Message> history, String childMessage, String enrichment) {
+        String enrichmentSection = !enrichment.isBlank() ? ENRICHMENT_BLOCK
+                .replace("{enrichment}", enrichment)
+                .replace("{name}", agentName) : "";
+        String system = SYSTEM_PROMPT_TEMPLATE
+                .replace("{interests}", interests)
+                .replace("{name}", agentName)
+                .replace("{enrichment_section}", enrichmentSection);
 
         // Convert our domain Message objects into Spring AI's message types.
         // Spring AI sends these as the conversation history so Claude has full context.
@@ -83,8 +97,8 @@ public class StoryDirectorAgent {
                 .call()
                 .content();
 
-        log.debug("Story Director — interests='{}', history={} turns, response='{}'",
-                interests, history.size(), response);
+        log.debug("Story Director — turns={}, enriched={}, response='{}'",
+                history.size(), !enrichment.isBlank(), response);
 
         return response;
     }

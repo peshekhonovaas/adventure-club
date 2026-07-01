@@ -1,5 +1,6 @@
 package com.adventureclub.orchestrator;
 
+import com.adventureclub.agent.EducationCoachAgent;
 import com.adventureclub.agent.SafetyGate;
 import com.adventureclub.agent.StoryDirectorAgent;
 import com.adventureclub.domain.Message;
@@ -17,18 +18,15 @@ import java.util.List;
 
 /**
  * Orchestrator — the brain of the agent pipeline.
- *
  * This is DETERMINISTIC CODE, not an LLM. It decides the order of operations:
  *   1. Resolve or create session
  *   2. Run input safety gate
  *   3. If safe → load history → call Story Director
  *   4. Persist both messages
  *   5. Return response
- *
  * Design decision: the orchestrator is plain Java, not an LLM agent.
  * Reason: the pipeline is sequential and stateful. An LLM-as-router adds
  * unpredictability precisely where you want none — especially around step 2.
- *
  * In phase 2 this class will also call the Education Coach before step 3.
  * In phase 3 it will optionally call the Creativity Coach when an image is attached.
  */
@@ -39,10 +37,12 @@ public class Orchestrator {
 
     private final SafetyGate safetyGate;
     private final StoryDirectorAgent storyDirector;
+    private final EducationCoachAgent educationCoach;
     private final SessionRepository sessionRepository;
     private final MessageRepository messageRepository;
 
     public Orchestrator(SafetyGate safetyGate,
+                        EducationCoachAgent educationCoach,
                         StoryDirectorAgent storyDirector,
                         SessionRepository sessionRepository,
                         MessageRepository messageRepository) {
@@ -50,6 +50,7 @@ public class Orchestrator {
         this.storyDirector = storyDirector;
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
+        this.educationCoach = educationCoach;
     }
 
     @Transactional
@@ -65,19 +66,30 @@ public class Orchestrator {
             return new TurnResponse(session.getId(), null, true);
         }
 
-        // Step 3: load full conversation history for this session
-        List<Message> history = messageRepository
-                .findBySessionIdOrderByCreatedAtAsc(session.getId());
-
-        // Step 4: call the Story Director with context
-        String storyText = storyDirector.nextBeat(
+        // Step 3 — Education Coach: find relevant knowledge base entries  ← NEW
+        //
+        // This is a vector similarity search — takes ~5ms locally.
+        // Returns empty string if nothing relevant found.
+        // The Story Director gracefully handles both cases.
+        String enrichment = educationCoach.findEnrichment(
                 session.getInterests(),
-                session.getAgentName(),
-                history,
                 request.childMessage()
         );
 
-        // Step 5: persist both the child's message and the assistant response
+        // Step 4: load full conversation history for this session
+        List<Message> history = messageRepository
+                .findBySessionIdOrderByCreatedAtAsc(session.getId());
+
+        // Step 5: Story Director, now with optional enrichment
+        String storyText = storyDirector.nextBeat(
+                session.getInterests(),
+                request.agentName(),
+                history,
+                request.childMessage(),
+                enrichment
+        );
+
+        // Step 6: persist both the child's message and the assistant response
         // Persist child's message first so history ordering is correct on next turn
         messageRepository.save(new Message(session.getId(), Message.Role.USER, request.childMessage()));
         messageRepository.save(new Message(session.getId(), Message.Role.ASSISTANT, storyText));

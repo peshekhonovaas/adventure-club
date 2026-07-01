@@ -26,7 +26,7 @@ class StoryDirectorAgentTest {
                 "star wars",
                 "Grogu",
                 List.of(),
-                "Hi Grogu!"
+                "Hi Grogu!", ""
         );
 
         System.out.println("Story Director response:\n" + response);

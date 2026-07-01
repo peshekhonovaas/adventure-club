@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USERNAME}
@@ -28,8 +28,14 @@ services:
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in your shell or .env file}
+      # Persist the downloaded ONNX embedding model (all-MiniLM-L6-v2) across restarts
+      # so it isn't re-fetched (~90 MB) on every cold start.
+      SPRING_AI_EMBEDDING_TRANSFORMER_RESOURCE_CACHE_DIRECTORY: /models
     ports:
       - "8080:8080"
+    volumes:
+      - onnx-models:/models
 
 volumes:
   postgres-data:
+  onnx-models:

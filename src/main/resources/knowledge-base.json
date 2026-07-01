@@ -1,0 +1,122 @@
+[
+  {
+    "id": "kb-001",
+    "topic": "Jedi adventure",
+    "content": "I am a Jedi who uses the Force to protect the galaxy from powerful villains called Sith.",
+    "activity": "Draw your own lightsaber and explain what special Force power it gives you."
+  },
+  {
+    "id": "kb-002",
+    "topic": "Mandalorian adventure",
+    "content": "I travel across the galaxy as a Mandalorian bounty hunter, exploring new planets and completing dangerous missions.",
+    "activity": "Draw your Mandalorian armor and describe what special gadget or weapon you would add to help you on your missions."
+  },
+  {
+    "id": "kb-003",
+    "topic": "Grogu space adventure force",
+    "content": "I am Grogu, a small Force-sensitive being who travels with my protector while learning to use the Force. I can move objects, sense danger, and sometimes surprise even the strongest enemies with my hidden powers.",
+    "activity": "Draw me using the Force to move an object."
+  },
+  {
+    "id": "kb-004",
+    "topic": "Pokémon trainer adventure",
+    "content": "I am a Pokémon trainer exploring different regions, catching Pokémon, training them, and battling alongside my team while building strong friendships with them.",
+    "activity": "Draw your own Pokémon and describe its name, type, and what special power it uses in battle."
+  },
+  {
+    "id": "kb-005",
+    "topic": "Star adventure space exploration galaxy",
+    "content": "I travel through the galaxy exploring distant stars and planets, discovering new worlds, and learning how stars are born, live, and shine across the universe.",
+    "activity": "Draw your own new star or planet and explain what makes it special in the galaxy."
+  },
+  {
+    "id": "kb-006",
+    "topic": "Dinosaurs adventure",
+    "content": "I travel back in time to the prehistoric world where I explore forests and rivers full of huge dinosaurs like T-Rex and Triceratops, learning how they lived, hunted, and survived on Earth millions of years ago.",
+    "activity": "Draw your own dinosaur comic book, describe what dinosaurs eat and how they protect itself."
+  },
+  {
+    "id": "kb-007",
+    "topic": "Animals adventure",
+    "content": "I explore different habitats around the world like jungles, oceans, deserts, and forests, meeting amazing animals and learning how they live, find food, and take care of their families.",
+    "activity": "Go outside and try to find an animal or insect that is hiding using camouflage. Check under leaves, or in the grass. Take a scratch."
+  },
+  {
+    "id": "kb-008",
+    "topic": "Knights adventure",
+    "content": "I journey through medieval castles and kingdoms, training as a brave knight who goes on quests, protects people, and discovers hidden treasures and secrets.",
+    "activity": "Design your own coat of arms. Choose a shape, a colour, and a symbol that represents something important to you. Draw it on paper."
+  },
+  {
+    "id": "kb-009",
+    "topic": "Electricity",
+    "content": "I explore how energy flows through wires and powers everything from lights to computers, learning how circuits work and how electricity can also appear in nature as lightning.",
+    "activity": "Rub a balloon on your hair for 30 seconds, then slowly bring it near a wall. Watch static electricity make it stick! This is a tiny version of what causes lightning."
+  },
+  {
+    "id": "kb-010",
+    "topic": "Insects",
+    "content": "I explore the tiny world of insects where ants build giant underground cities, bees work together to make honey, and butterflies travel long journeys across countries.",
+    "activity": "Find an ant trail outside and follow it. Where are they going? Place a small crumb of food in their path and watch how they discover and carry it."
+  },
+  {
+    "id": "kb-011",
+    "topic": "Plants",
+    "content": "Some plants eat insects and even small animals! Venus flytraps snap shut in less than a tenth of a second when an insect touches the tiny trigger hairs inside.",
+    "activity": "Press a flower or leaf flat between the pages of a heavy book for two weeks. When you take it out you'll have preserved it perfectly — try decorating a bookmark with it."
+  },
+  {
+    "id": "kb-012",
+    "topic": "Egypt pyramids",
+    "content": "The Great Pyramid of Giza was the tallest structure on Earth for 3,800 years. It was built from about 2.3 million stone blocks, some weighing as much as 80 tonnes.",
+    "activity": "Write your name using Egyptian hieroglyphics! Search for a 'hieroglyphics alphabet' with a grown-up and decode your name into ancient symbols."
+  },
+  {
+    "id": "kb-013",
+    "topic": "Unicorn adventure",
+    "content": "I travel through enchanted forests and magical kingdoms, meeting unicorns that use their special powers to help animals, protect nature, and bring kindness wherever they go.",
+    "activity": "Draw your own unicorn and describe its magical power, horn colour, and the place where it lives."
+  },
+  {
+    "id": "kb-014",
+    "topic": "Birds",
+    "content": "Arctic terns migrate from the Arctic to the Antarctic and back every year — a round trip of 70,000 km, the longest migration of any animal. Birds navigate using the Earth's magnetic field, the position of stars, the Sun, and even smell.",
+    "activity": "Go outside and count how many different species of bird you can spot in 10 minutes. Try to draw the shape of each bird's beak — what do you think it eats?"
+  },
+  {
+    "id": "kb-015",
+    "topic": "Magic adventure",
+    "content": "I explore an enchanted world where I learn magical spells, discover mysterious creatures, and use my powers to solve problems and help others on exciting quests.",
+    "activity": "Create a comic about a wizard or witch, where you describe one magical spell they would invent and what it would do."
+  },
+  {
+    "id": "kb-016",
+    "topic": "Harry Potter world adventure",
+    "content": "I study magic at Hogwarts, learn new spells, attend exciting classes, and explore secret passages while making friends and discovering magical mysteries.",
+    "activity": "What is your magic name? From what house are you? Write about your character."
+  },
+  {
+    "id": "kb-017",
+    "topic": "Trees forest nature plants",
+    "content": "I know that trees communicate with each other through a network of fungi connected to their roots — scientists call it the 'wood wide web.' Through this network trees can share nutrients and even warn each other about insect attacks.",
+    "activity": "Go outside and hug a tree (really!). Try to estimate how old it is by measuring its trunk. A trunk about as wide as your arms spread is roughly 100 years old."
+  },
+  {
+    "id": "kb-018",
+    "topic": "Spiders",
+    "content": "I heard that a spider silk is stronger than steel of the same thickness and stretches up to four times its original length without breaking.",
+    "activity": "Find a spider's web outside (early morning is best — look for dew on them). Sketch its pattern carefully. How many different types of thread can you spot?"
+  },
+  {
+    "id": "kb-019",
+    "topic": "Music",
+    "content": "Do you know that sound is vibration travelling through air as invisible waves? You hear it when these waves make your eardrums vibrate. In space there is no air, so there is no sound — explosions in space would be completely silent.",
+    "activity": "Make a simple telephone with two paper cups and a long piece of string pulled tight. Does it work? Try whispering — how far apart can you be and still hear each other?"
+  },
+  {
+    "id": "kb-020",
+    "topic": "Robots",
+    "content": "Robots work by following instructions called programs, written by humans. Modern robots use sensors — cameras, microphones, and touch sensors — to understand their environment, just like humans use eyes and ears.",
+    "activity": "Give a friend or family member instructions to make a sandwich — but only using the most exact, specific steps possible, as if they were a robot who understood nothing on their own. See what happens!"
+  }
+]
