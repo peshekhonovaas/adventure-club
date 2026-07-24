@@ -20,13 +20,59 @@ spring:
     locations: classpath:db/migration
 
   ai:
-    anthropic:
-      api-key: ${ANTHROPIC_API_KEY}   # export ANTHROPIC_API_KEY=sk-ant-... before running
+    # Embeddings stay on the local ONNX model (free, offline); only chat goes to Gemini.
+    # Image generation is NOT Spring AI's OpenAI ImageModel (that endpoint is
+    # text-to-image only); we use a native Gemini client instead — see the
+    # `adventureclub.images` block below — so disable the OpenAI image model here.
+    model:
+      embedding: transformers
+      image: none
+
+    # We talk to Google Gemini through its OpenAI-compatible API using Spring AI's
+    # OpenAI client. Everything is env-driven, so switching from a FREE Google AI
+    # Studio key to a PAID Vertex AI account later is only a change of env values —
+    # no code change:
+    #   Free  (Google AI Studio): the defaults below + GEMINI_API_KEY=<AI Studio key>
+    #   Paid  (Vertex AI):        set GEMINI_BASE_URL to the Vertex OpenAI endpoint
+    #                             (https://{LOCATION}-aiplatform.googleapis.com/v1beta1/
+    #                              projects/{PROJECT}/locations/{LOCATION}/endpoints/openapi)
+    #                             and GEMINI_API_KEY=<gcloud access token>.
+    openai:
+      api-key: ${GEMINI_API_KEY}
+      base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}
       chat:
+        completions-path: ${GEMINI_COMPLETIONS_PATH:/chat/completions}
         options:
-          model: claude-sonnet-4-6
+          model: ${GEMINI_MODEL:gemini-3.5-flash}   # multimodal — also "sees" uploaded drawings; must be a real ID (no plain "gemini-3.1-flash" exists — use -lite)
           max-tokens: 1024
           temperature: 0.8       # some creative variance for story generation
+
+# The Illustrator grows ONE living picture of the adventure with Pollinations AI
+# (https://pollinations.ai) via two endpoints:
+#  - No base picture yet: draw from scratch text-to-image with the free, keyless GET
+#    endpoint (base-url + /prompt/{prompt}), using `model` (flux is free/keyless).
+#  - A base picture exists (a fresh upload, else the previous scene the client sends
+#    back): paint the new beat ONTO it (image-to-image editing) via the OpenAI-
+#    compatible POST endpoint (edit-base-url + /v1/images/edits). The base picture is
+#    sent in the multipart BODY (NOT the URL) — this is what avoids the 414 URI Too
+#    Long error the old query-param data: URI approach hit on large images. Uses
+#    `edit-model`; Pollinations' editing models (e.g. kontext, gptimage) require an
+#    account token — set POLLINATIONS_API_KEY (see https://enter.pollinations.ai).
+# Env-driven so model/size/provider/key is a config change:
+#   POLLINATIONS_MODEL (default flux), POLLINATIONS_EDIT_MODEL (default kontext),
+#   POLLINATIONS_BASE_URL, POLLINATIONS_EDIT_BASE_URL, POLLINATIONS_API_KEY (empty),
+#   IMAGE_WIDTH/IMAGE_HEIGHT (default 768).
+# Set IMAGES_ENABLED=false to turn pictures off entirely.
+adventureclub:
+  images:
+    enabled: ${IMAGES_ENABLED:true}
+    base-url: ${POLLINATIONS_BASE_URL:https://image.pollinations.ai}
+    edit-base-url: ${POLLINATIONS_EDIT_BASE_URL:https://gen.pollinations.ai}
+    model: ${POLLINATIONS_MODEL:flux}
+    edit-model: ${POLLINATIONS_EDIT_MODEL:kontext}
+    api-key: ${POLLINATIONS_API_KEY}
+    width: ${IMAGE_WIDTH:768}
+    height: ${IMAGE_HEIGHT:768}
 
 logging:
   level:

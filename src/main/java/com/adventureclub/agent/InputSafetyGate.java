@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
  * Runs on every child message BEFORE it reaches the Story Director.
  * Uses a separate ChatClient call so the story agent never sees unsafe content.
  *
- * Design decision: this is a separate Claude call, not a flag in the story prompt.
+ * Design decision: this is a separate LLM call, not a flag in the story prompt.
  * Reason: if safety is embedded in the story prompt, a jailbreak attempt that
  * confuses the story agent also disables safety. Two separate calls means one
  * must succeed independently of the other.

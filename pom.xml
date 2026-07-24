@@ -38,7 +38,7 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- Loads .env into the Spring Environment so ${DB_*} / ${ANTHROPIC_API_KEY}
+        <!-- Loads .env into the Spring Environment so ${DB_*} / ${GEMINI_API_KEY}
              resolve for both the app and tests, with no shell exports needed. -->
         <dependency>
             <groupId>me.paulschwarz</groupId>
@@ -46,10 +46,13 @@
             <version>4.0.0</version>
         </dependency>
 
-        <!-- Spring AI — Anthropic (auto-configures ChatModel + ChatClient.Builder) -->
+        <!-- Spring AI — OpenAI client (auto-configures ChatModel + ChatClient.Builder).
+             We point it at Google Gemini's OpenAI-compatible endpoint via application.yml,
+             so the same client serves a free Google AI Studio key today and a paid
+             Vertex AI endpoint later with only a config change (base-url + key + model). -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-model-anthropic</artifactId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
         </dependency>
 
         <!-- JPA + Postgres -->

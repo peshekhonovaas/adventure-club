@@ -29,6 +29,24 @@ public class Session {
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 
+    // The latest picture the Illustrator generated for this adventure — kept server-side
+    // so the next turn can paint the new beat onto it (the living canvas). Raw base64
+    // (no {@code data:} prefix) plus its MIME type. Both null until the first picture exists.
+    @Column(columnDefinition = "TEXT")
+    private String sceneImageData;
+
+    @Column
+    private String sceneImageMediaType;
+
+    // The picture that was the living canvas BEFORE the latest generated one — kept so the
+    // child can undo the last generated picture and go back to the previous one. Raw base64
+    // (no {@code data:} prefix) plus its MIME type. Both null until at least two pictures exist.
+    @Column(columnDefinition = "TEXT")
+    private String previousSceneImageData;
+
+    @Column
+    private String previousSceneImageMediaType;
+
     public Session(String childName, String interests, String agentName) {
         this.childName = childName;
         this.interests = interests;

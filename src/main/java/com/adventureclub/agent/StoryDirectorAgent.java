@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * Story Director — the Game Master agent.
- * Week 1 goal: get this returning a real story response from Claude,
+ * Week 1 goal: get this returning a real story response from the LLM (Gemini),
  * with multi-turn memory working. Everything else is scaffolding.
  * What it does NOT do yet (phase 2+):
  * - Pull educational content from the knowledge base (Education Coach handles that)
@@ -66,13 +66,21 @@ public class StoryDirectorAgent {
 
     /**
      * Generates the next story beat.
+     * <p>
+     * Text only, by design: the story evolves from the conversation alone. Any picture
+     * the child uploads is NOT sent to the story agent — it goes only to the
+     * {@code IllustratorAgent}, which edits the living picture. This keeps the two
+     * concerns decoupled (the story doesn't depend on, or describe, the drawing).
      *
      * @param interests    the child's interests, e.g. "dragons, pokemons, star wars"
+     * @param agentName    the Game Master's name
      * @param history      all previous messages in this session, oldest first
      * @param childMessage what the child just typed
+     * @param enrichment   optional educational context to weave in, or "" if none
      * @return the next paragraph of the adventure
      */
-    public String nextBeat(String interests, String agentName, List<Message> history, String childMessage, String enrichment) {
+    public String nextBeat(String interests, String agentName, List<Message> history, String childMessage,
+                           String enrichment) {
         String enrichmentSection = !enrichment.isBlank() ? ENRICHMENT_BLOCK
                 .replace("{enrichment}", enrichment)
                 .replace("{name}", agentName) : "";
@@ -82,7 +90,7 @@ public class StoryDirectorAgent {
                 .replace("{enrichment_section}", enrichmentSection);
 
         // Convert our domain Message objects into Spring AI's message types.
-        // Spring AI sends these as the conversation history so Claude has full context.
+        // Spring AI sends these as the conversation history so the model has full context.
         List<org.springframework.ai.chat.messages.Message> aiMessages = history.stream()
                 .map(m -> switch (m.getRole()) {
                     case USER      -> (org.springframework.ai.chat.messages.Message) new UserMessage(m.getContent());
@@ -90,10 +98,11 @@ public class StoryDirectorAgent {
                 })
                 .toList();
 
+        // Text only — the new message goes last, after the full conversation history.
         String response = chatClient.prompt()
                 .system(system)
-                .messages(aiMessages)  // history goes here — Claude sees the full conversation
-                .user(childMessage)    // the new message goes last
+                .messages(aiMessages)  // history goes here — the model sees the full conversation
+                .user(childMessage)
                 .call()
                 .content();
 

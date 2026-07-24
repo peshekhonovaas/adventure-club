@@ -1,6 +1,7 @@
 package com.adventureclub.orchestrator;
 
 import com.adventureclub.agent.EducationCoachAgent;
+import com.adventureclub.agent.IllustratorAgent;
 import com.adventureclub.agent.OutputSafetyGate;
 import com.adventureclub.agent.InputSafetyGate;
 import com.adventureclub.agent.StoryDirectorAgent;
@@ -15,7 +16,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Orchestrator — the full agent pipeline with both safety gates.
@@ -32,13 +35,15 @@ import java.util.List;
  *        ↓
  *   4. Load history
  *        ↓
+ *   4b. Illustrator       ← draws a picture of the PREVIOUS beat + earlier picture(s)
+ *        ↓                    (best-effort, BEFORE the new story is generated)
  *   5. Story Director     ← generates story response
  *        ↓
  *   6. OUTPUT SAFETY GATE ← blocks unsafe story responses
  *        ↓ (if safe)
  *   7. Persist both messages
  *        ↓
- *   [child sees response]
+ *   [child sees response + picture]
  * <p>
  * IMPORTANT — only persist messages that passed both gates.
  * Blocked messages are never written to the database.
@@ -59,6 +64,7 @@ public class Orchestrator {
     private final InputSafetyGate inputSafetyGate;
     private final StoryDirectorAgent storyDirector;
     private final EducationCoachAgent educationCoach;
+    private final IllustratorAgent illustrator;
     private final SessionRepository sessionRepository;
     private final MessageRepository messageRepository;
     private final OutputSafetyGate outputGate;
@@ -67,12 +73,14 @@ public class Orchestrator {
                         OutputSafetyGate outputGate,
                         EducationCoachAgent educationCoach,
                         StoryDirectorAgent storyDirector,
+                        IllustratorAgent illustrator,
                         SessionRepository sessionRepository,
                         MessageRepository messageRepository) {
         this.inputSafetyGate = inputSafetyGate;
         this.outputGate       = outputGate;
         this.educationCoach   = educationCoach;
         this.storyDirector    = storyDirector;
+        this.illustrator      = illustrator;
         this.sessionRepository  = sessionRepository;
         this.messageRepository  = messageRepository;
     }
@@ -86,8 +94,9 @@ public class Orchestrator {
 
         // Step 2: input safety gate — runs BEFORE the story agent sees anything
         if (!inputSafetyGate.isSafe(request.childMessage())) {
-            // Do not persist blocked messages — no data about what was blocked
-            return new TurnResponse(session.getId(), null, true);
+            // Do not persist blocked messages — no data about what was blocked.
+            // No picture either — nothing safe to illustrate.
+            return new TurnResponse(session.getId(), null, null, true);
         }
 
         // Step 3 — Education Coach: find relevant knowledge base entries  ← NEW
@@ -104,7 +113,43 @@ public class Orchestrator {
         List<Message> history = messageRepository
                 .findBySessionIdOrderByCreatedAtAsc(session.getId());
 
-        // Step 5: Story Director, now with optional enrichment
+        // Step 4b — Illustrator FIRST: the picture is drawn BEFORE the new story is
+        // generated. It grows the adventure's ONE living picture, which is kept
+        // server-side on the session (the Illustrator's previous output). The
+        // Illustrator only runs when the child just uploaded a drawing this turn — on
+        // plain text turns we skip drawing entirely. The base images handed to the
+        // Illustrator are exactly these two, in order:
+        //   1. the previously generated picture (from the session), when one exists;
+        //   2. the fresh upload the child just added.
+        // The upload is MERGED INTO the previous picture (it adds to the living picture
+        // rather than replacing it). Best-effort — returns null on failure/quota.
+        String imageUrl = null;
+        List<IllustratorAgent.SourceImage> baseImages = new ArrayList<>();
+        if (session.getSceneImageData() != null && !session.getSceneImageData().isBlank()) {
+            baseImages.add(new IllustratorAgent.SourceImage(
+                        session.getSceneImageData(), session.getSceneImageMediaType()));
+        }
+        if (request.hasImage()) {
+            baseImages.add(new IllustratorAgent.SourceImage(
+                    request.imageData(), request.imageMediaType()));
+        }
+        if (!baseImages.isEmpty()) {
+            imageUrl = illustrator.illustrate(session.getInterests(), request.childMessage(), baseImages);
+        }
+
+        // Persist ONLY the freshly generated picture as the new living canvas — the
+        // uploaded/previous images are not stored. When nothing new was drawn we keep the
+        // previously stored picture untouched so the screen never blanks.
+        if (imageUrl != null) {
+            storeGeneratedScene(session, imageUrl);
+        } else {
+            imageUrl = asDataUrl(session.getSceneImageData(), session.getSceneImageMediaType());
+        }
+
+        // Step 5: Story Director — text only. The story evolves from the conversation
+        // and optional educational enrichment; any uploaded picture is deliberately
+        // NOT sent here (it goes only to the Illustrator, step 4b), so the two stay
+        // decoupled.
         String storyText = storyDirector.nextBeat(
                 session.getInterests(),
                 request.agentName(),
@@ -113,7 +158,7 @@ public class Orchestrator {
                 enrichment
         );
 
-        // Step 6 — output safety gate
+        // Step 6 — output safety gateF
         // Checks the story response before it reaches the child.
         // If blocked, replace with a warm fallback and persist that instead.
         // The child never knows their story was redirected.
@@ -135,7 +180,71 @@ public class Orchestrator {
         messageRepository.save(new Message(
                 session.getId(), Message.Role.ASSISTANT, responseToSend));
 
-        return new TurnResponse(session.getId(), responseToSend, false);
+        // The picture was already drawn in step 4b (before this new story beat), based on
+        // the PREVIOUS beat and the earlier picture(s), so we simply return it here.
+        return new TurnResponse(session.getId(), responseToSend, imageUrl, false);
+    }
+
+    /**
+     * Undo the last generated picture: restores the previous living canvas so the child can
+     * step back one picture. The current picture is discarded and the previously stored one
+     * becomes the living canvas again (a single level of undo). When no previous picture
+     * exists, the current picture is left untouched.
+     *
+     * @param sessionId the session to undo the last picture for
+     * @return the picture now shown as a browser-ready {@code data:} URL (or null when none)
+     */
+    @Transactional
+    public TurnResponse undoLastImage(UUID sessionId) {
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown session: " + sessionId));
+        if (session.getPreviousSceneImageData() != null
+                && !session.getPreviousSceneImageData().isBlank()) {
+            // Roll back one step: the previous picture becomes the current living canvas and
+            // there is nothing further to undo (single-level undo).
+            session.setSceneImageData(session.getPreviousSceneImageData());
+            session.setSceneImageMediaType(session.getPreviousSceneImageMediaType());
+            session.setPreviousSceneImageData(null);
+            session.setPreviousSceneImageMediaType(null);
+            sessionRepository.save(session);
+            log.info("Undid last generated picture for session={}", sessionId);
+        }
+        String imageUrl = asDataUrl(session.getSceneImageData(), session.getSceneImageMediaType());
+        return new TurnResponse(session.getId(), null, imageUrl, false);
+    }
+
+    /**
+     * Stores the freshly generated picture as the session's living canvas: splits the
+     * {@code data:<mime>;base64,<data>} URL back into raw base64 + MIME and persists it.
+     * The picture it replaces is kept as the {@code previous} picture so the child can undo
+     * one step. Only the generated picture is ever stored (uploads/previous images are not).
+     */
+    private void storeGeneratedScene(Session session, String dataUrl) {
+        if (dataUrl == null || !dataUrl.startsWith("data:")) {
+            return;
+        }
+        int comma = dataUrl.indexOf(',');
+        if (comma < 0) {
+            return;
+        }
+        String meta = dataUrl.substring("data:".length(), comma); // e.g. "image/png;base64"
+        int semicolon = meta.indexOf(';');
+        String mime = semicolon >= 0 ? meta.substring(0, semicolon) : meta;
+        // Preserve the current picture as the previous one so the child can undo one step.
+        session.setPreviousSceneImageData(session.getSceneImageData());
+        session.setPreviousSceneImageMediaType(session.getSceneImageMediaType());
+        session.setSceneImageData(dataUrl.substring(comma + 1));
+        session.setSceneImageMediaType(mime.isBlank() ? "image/png" : mime);
+        sessionRepository.save(session);
+    }
+
+    /** Rebuilds a browser-ready {@code data:} URL from raw base64 + media type, or null if absent. */
+    private static String asDataUrl(String base64, String mediaType) {
+        if (base64 == null || base64.isBlank()) {
+            return null;
+        }
+        String mime = (mediaType == null || mediaType.isBlank()) ? "image/png" : mediaType;
+        return "data:" + mime + ";base64," + base64;
     }
 
     private Session resolveSession(TurnRequest request) {

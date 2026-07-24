@@ -1,7 +1,7 @@
 package com.adventureclub.agent;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.model.anthropic.autoconfigure.AnthropicChatAutoConfiguration;
+import org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration;
 import org.springframework.ai.model.chat.client.autoconfigure.ChatClientAutoConfiguration;
 import org.springframework.ai.retry.autoconfigure.SpringAiRetryAutoConfiguration;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,10 +14,10 @@ import org.springframework.context.annotation.Import;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Integration test — makes real Claude API calls.
+ * Integration test — makes real LLM API calls (Google Gemini via the OpenAI-compatible API).
  *
  * Run with:
- *   mvn test -Dtest=OutputSafetyGateTest -DANTHROPIC_API_KEY=sk-ant-...
+ *   mvn test -Dtest=OutputSafetyGateTest -DGEMINI_API_KEY=<your key>
  *
  * These tests verify the gate classifies correctly.
  * If a "should be SAFE" test fails, your prompt is too aggressive.
@@ -25,8 +25,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Tune SYSTEM_PROMPT in OutputSafetyGate until all pass.
  *
  * NOTE ON CONTEXT: this test deliberately does NOT boot the full application
- * context. OutputSafetyGate only needs a Claude {@code ChatClient.Builder}, so
- * we load just the Anthropic AI auto-configuration plus the gate itself. Booting
+ * context. OutputSafetyGate only needs a {@code ChatClient.Builder}, so we load
+ * just the OpenAI (Gemini) chat auto-configuration plus the gate itself. Booting
  * the whole app (plain {@code @SpringBootTest}) would drag in Flyway/JPA/pgvector
  * and fail with "connection refused" unless Postgres happens to be running — an
  * irrelevant dependency for an output-safety test.
@@ -35,13 +35,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OutputSafetyGateTest {
 
     /**
-     * Minimal context: the Anthropic ChatClient stack (no datasource) + the gate.
+     * Minimal context: the OpenAI (Gemini) ChatClient stack (no datasource) + the gate.
      */
     @Configuration
     @ImportAutoConfiguration({
             RestClientAutoConfiguration.class,
             SpringAiRetryAutoConfiguration.class,
-            AnthropicChatAutoConfiguration.class,
+            OpenAiChatAutoConfiguration.class,
             ChatClientAutoConfiguration.class
     })
     @Import(OutputSafetyGate.class)

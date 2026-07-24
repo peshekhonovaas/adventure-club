@@ -9,7 +9,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Integration test that makes a real call to the Claude API.
+ * Integration test that makes a real call to the LLM API (Google Gemini).
  */
 @SpringBootTest
 class StoryDirectorAgentTest {

@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
  * Output safety gate.
  *  * <p>
  * Runs on the Story Director's reply BEFORE it is sent to the child.
- * This is a separate Claude call from the input gate.
+ * This is a separate LLM call from the input gate.
  * WHY A SECOND GATE IS NEEDED:
  * <p>
  * The input gate blocks unsafe child messages before the story agent sees them.
