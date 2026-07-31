@@ -11,4 +11,7 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
     // Returns the full conversation history for a session, oldest message first.
     // Spring Data generates the SQL from the method name — no @Query needed.
     List<Message> findBySessionIdOrderByCreatedAtAsc(UUID sessionId);
+
+    // Wipes the entire conversation history for a session (used when restarting an adventure).
+    void deleteBySessionId(UUID sessionId);
 }

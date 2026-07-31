@@ -76,7 +76,17 @@ const STYLE = `
   .blocked-banner, .error-banner { flex-shrink: 0; }
 
   /* header */
-  .app-header { text-align: center; padding: 8px 16px 2px; }
+  .app-header { text-align: center; padding: 8px 16px 2px; position: relative; }
+  .restart-btn {
+    position: absolute; top: 8px; right: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 6px 12px;
+    color: var(--txt-dim); font-family: 'Nunito', sans-serif; font-size: 12px; font-weight: 800;
+    cursor: pointer; line-height: 1;
+    transition: color .15s, border-color .15s, transform .15s;
+  }
+  .restart-btn:hover:not(:disabled) { color: #fff; border-color: rgba(255,184,48,.6); transform: translateY(-1px); }
+  .restart-btn:disabled { opacity: .4; cursor: not-allowed; }
   .app-title {
     font-family: 'Fredoka One', cursive; font-size: 24px; color: #fff;
     text-shadow: 0 0 20px rgba(160,60,255,.5);
@@ -173,15 +183,15 @@ const STYLE = `
   }
   .picture-empty { text-align: center; color: var(--txt-dim); font-size: 13.5px; padding: 16px; }
   .picture-empty .pe-emoji { font-size: 40px; display: block; margin-bottom: 8px; opacity: .6; }
-  .picture-remove {
+  .picture-save {
     position: absolute; top: 10px; right: 10px;
     width: 30px; height: 30px; border-radius: 50%;
     background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.25);
     color: #fff; font-size: 15px; cursor: pointer; line-height: 1;
     display: flex; align-items: center; justify-content: center;
-    transition: background .15s; z-index: 2;
+    transition: background .15s; z-index: 2; text-decoration: none;
   }
-  .picture-remove:hover { background: rgba(255,80,80,.7); }
+  .picture-save:hover { background: rgba(0,200,120,.7); }
   .picture-panel.is-painting img { filter: brightness(.7) saturate(.85); }
   .picture-painting {
     position: absolute; top: 10px; left: 10px; z-index: 2;
@@ -359,7 +369,7 @@ function GMBubble({ text, loading, agentName }) {
 }
 
 // ── Picture panel ───────────────────────────────────────────────
-function PicturePanel({ image, loading, onClear }) {
+function PicturePanel({ image, loading, onSave }) {
     if (!image) {
         return (
             <div className="picture-panel">
@@ -377,7 +387,7 @@ function PicturePanel({ image, loading, onClear }) {
                 <span/><span/><span/><span/>
             </div>
             {loading && <div className="picture-painting" aria-hidden="true">🪄 Painting…</div>}
-            <button className="picture-remove" onClick={onClear} aria-label="Start a new picture">✕</button>
+            <button className="picture-save" onClick={onSave} aria-label="Save this picture" title="Save this picture">💾</button>
         </div>
     );
 }
@@ -492,6 +502,41 @@ export default function AdventureClub() {
         }
     }
 
+    async function handleRestart() {
+        if (loading) return;
+        if (!window.confirm("Start a brand-new adventure? This clears the current story and picture, and lets you pick a new theme.")) return;
+        const currentSessionId = sessionId;
+        // Reset the screen to a clean slate and return to the very first page (onboarding),
+        // so the child can choose a completely different theme.
+        setStory(""); setSceneImage(null); setMessage("");
+        setBlocked(false); setError(null);
+        setInterests("");
+        setSessionId(null);
+        setPhase("onboarding");
+        // Best-effort server cleanup of the old session's story history and picture(s).
+        if (currentSessionId) {
+            try {
+                await fetch(`${API_BASE}/session/restart`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ sessionId: currentSessionId }),
+                });
+            } catch (e) {
+                // Best-effort — even if the server call fails the user still lands on onboarding.
+            }
+        }
+    }
+
+    function handleSaveImage() {
+        if (!sceneImage) return;
+        const a = document.createElement("a");
+        a.href = sceneImage;
+        a.download = "adventure-picture.png";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    }
+
     function handleFilePick(e) {
         const file = e.target.files?.[0];
         e.target.value = "";
@@ -525,6 +570,15 @@ export default function AdventureClub() {
                 <div className="app-header">
                     <div className="app-title">✦ Adventure Club ✦</div>
                     <div className="app-subtitle">A magical quest with {agentName}</div>
+                    <button
+                        className="restart-btn"
+                        onClick={handleRestart}
+                        disabled={loading}
+                        aria-label="Start a new adventure"
+                        title="Start a new adventure"
+                    >
+                        🔄 New adventure
+                    </button>
                 </div>
 
                 <SceneIllustration interests={interests}/>
@@ -538,7 +592,7 @@ export default function AdventureClub() {
                 <PicturePanel
                     image={sceneImage}
                     loading={loading}
-                    onClear={() => setSceneImage(null)}
+                    onSave={handleSaveImage}
                 />
 
                 {blocked && (

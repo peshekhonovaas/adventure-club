@@ -1,5 +1,6 @@
 package com.adventureclub.controller;
 
+import com.adventureclub.domain.RestartRequest;
 import com.adventureclub.domain.TurnRequest;
 import com.adventureclub.domain.TurnResponse;
 import com.adventureclub.domain.UndoRequest;
@@ -46,6 +47,20 @@ public class SessionController {
     @PostMapping("/undo")
     public ResponseEntity<TurnResponse> undo(@Valid @RequestBody UndoRequest request) {
         TurnResponse response = orchestrator.undoLastImage(request.sessionId());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * POST /session/restart
+     *   Body:  { "sessionId": "uuid" }
+     *   Returns: { "sessionId": "uuid", "storyText": null, "imageUrl": null, "blocked": false }
+     *
+     * Restarts the adventure: wipes the session's story history and picture(s), keeping the
+     * session (and its interests). The client then starts a fresh adventure with a new turn.
+     */
+    @PostMapping("/restart")
+    public ResponseEntity<TurnResponse> restart(@Valid @RequestBody RestartRequest request) {
+        TurnResponse response = orchestrator.restartSession(request.sessionId());
         return ResponseEntity.ok(response);
     }
 }

@@ -214,6 +214,31 @@ public class Orchestrator {
     }
 
     /**
+     * Restart an adventure: wipes the session's entire story history and every stored picture
+     * (current and previous), keeping the session itself (and its interests) so a brand-new
+     * adventure can begin from a clean slate. After this the next {@code /turn} starts fresh
+     * with an empty history and no picture.
+     *
+     * @param sessionId the session to restart
+     * @return a cleared {@link TurnResponse} (no story text, no picture)
+     */
+    @Transactional
+    public TurnResponse restartSession(UUID sessionId) {
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown session: " + sessionId));
+        // Wipe the conversation history — the next turn builds the story from scratch.
+        messageRepository.deleteBySessionId(sessionId);
+        // Clear both the living canvas and the undo picture.
+        session.setSceneImageData(null);
+        session.setSceneImageMediaType(null);
+        session.setPreviousSceneImageData(null);
+        session.setPreviousSceneImageMediaType(null);
+        sessionRepository.save(session);
+        log.info("Restarted session={} — history and pictures cleared", sessionId);
+        return new TurnResponse(session.getId(), null, null, false);
+    }
+
+    /**
      * Stores the freshly generated picture as the session's living canvas: splits the
      * {@code data:<mime>;base64,<data>} URL back into raw base64 + MIME and persists it.
      * The picture it replaces is kept as the {@code previous} picture so the child can undo
