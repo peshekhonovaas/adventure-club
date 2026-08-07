@@ -20,12 +20,12 @@ WORKDIR /workspace
 # Cache Maven dependencies: copy wrapper + pom first, resolve, then copy sources.
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-RUN --mount=type=cache,id=m2,target=/root/.m2 ./mvnw -B -q dependency:go-offline
+RUN ./mvnw -B -q dependency:go-offline
 
 COPY src/ src/
 # Drop the built React app into the static folder so it's packaged into the jar.
 COPY --from=frontend /src/main/resources/static/ src/main/resources/static/
-RUN --mount=type=cache,id=m2,target=/root/.m2 ./mvnw -B -q clean package -DskipTests
+RUN ./mvnw -B -q clean package -DskipTests
 
 # --- Runtime stage: slim JRE with just the jar ---
 FROM eclipse-temurin:21-jre AS runtime
