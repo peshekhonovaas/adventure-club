@@ -13,9 +13,11 @@ export default defineConfig({
   },
   server: {
     // `npm run dev` serves on :5173; proxy the API calls to the Spring Boot
-    // backend on :8080 so relative fetches ("/session/...") work in dev too.
+    // backend on :8080 so relative fetches ("/session/...", "/auth/...") work in
+    // dev too — including the session cookie set by the auth endpoints.
     proxy: {
       '/session': 'http://localhost:8080',
+      '/auth': 'http://localhost:8080',
     },
   },
 })

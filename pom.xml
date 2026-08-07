@@ -38,6 +38,14 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Security — real backend auth (parents/heroes register + log in).
+             Passwords are BCrypt-hashed; a stateful HTTP session (JSESSIONID cookie)
+             keeps the player signed in and gates the /session/** endpoints. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
         <!-- Loads .env into the Spring Environment so ${DB_*} / ${GEMINI_API_KEY}
              resolve for both the app and tests, with no shell exports needed. -->
         <dependency>

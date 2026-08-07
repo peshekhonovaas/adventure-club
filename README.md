@@ -69,16 +69,18 @@ changes go in a new migration file.
 - Java 21
 - A running Postgres instance
 - A Gemini API key (free from Google AI Studio)
-- A Pollinations API key (free from https://enter.pollinations.ai — required for the Illustrator's image editing)
+- A Cloudflare account id + Workers AI API token (from https://developers.cloudflare.com/workers-ai/ — required for the Illustrator's image generation and editing)
 
 ### Environment variables
 
-Required: `GEMINI_API_KEY`, `POLLINATIONS_API_KEY`, `DB_USERNAME`, `DB_PASSWORD`.
-`POLLINATIONS_API_KEY` is an account token (free from https://enter.pollinations.ai); the Illustrator's
-image-to-image editing needs it, and without it editing fails with `401 Unauthorized`.
+Required: `GEMINI_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `DB_USERNAME`, `DB_PASSWORD`.
+`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are a Cloudflare account id and Workers AI
+API token (from https://developers.cloudflare.com/workers-ai/); the Illustrator's image
+generation and image-to-image editing need them, and without them illustration fails.
 Optional: `DB_HOST` / `DB_PORT` / `DB_NAME`, `GEMINI_MODEL` (default `gemini-2.5-flash`),
-`GEMINI_BASE_URL`, and the Pollinations knobs `POLLINATIONS_MODEL` / `POLLINATIONS_EDIT_MODEL` /
-`POLLINATIONS_BASE_URL` / `POLLINATIONS_EDIT_BASE_URL` / `IMAGE_WIDTH` / `IMAGE_HEIGHT`
+`GEMINI_BASE_URL`, and the Cloudflare knobs `CLOUDFLARE_IMAGE_MODEL` (default
+`@cf/black-forest-labs/flux-2-klein-4b`) / `CLOUDFLARE_IMAGE_EDIT_MODEL` (default
+`@cf/black-forest-labs/flux-2-klein-4b`) / `CLOUDFLARE_BASE_URL`
 (or `IMAGES_ENABLED=false` to disable pictures). For a paid Vertex AI account later, point
 `GEMINI_BASE_URL` at the Vertex OpenAI endpoint and use a `gcloud` access token as `GEMINI_API_KEY` — no code change.
 

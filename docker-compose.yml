@@ -36,17 +36,18 @@ services:
       # no plain "gemini-3.1-flash"; the stable flash models are gemini-3.5-flash and
       # gemini-3.1-flash-lite.
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
-      # Pictures are drawn by Pollinations AI. Draw-from-scratch (flux) is free and
-      # keyless, but image-to-image EDITING (kontext) needs an account token — set
-      # POLLINATIONS_API_KEY in your shell or .env file, otherwise editing fails with
-      # 401 Unauthorized and the turn best-effort keeps the previous picture. These
-      # MUST be listed here so Compose forwards them from .env INTO the container —
-      # variables only referenced in .env are used for substitution, not passed in.
-      POLLINATIONS_MODEL: ${POLLINATIONS_MODEL:-flux}
-      POLLINATIONS_EDIT_MODEL: ${POLLINATIONS_EDIT_MODEL:-kontext}
-      POLLINATIONS_BASE_URL: ${POLLINATIONS_BASE_URL:-https://image.pollinations.ai}
-      POLLINATIONS_EDIT_BASE_URL: ${POLLINATIONS_EDIT_BASE_URL:-https://gen.pollinations.ai}
-      POLLINATIONS_API_KEY: ${POLLINATIONS_API_KEY:-}
+      # Pictures are drawn by Cloudflare Workers AI (both draw-from-scratch and
+      # image-to-image editing) via its REST API — needs a Cloudflare account id +
+      # API token, set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in your shell or
+      # .env file, otherwise illustration fails and the turn best-effort keeps the
+      # previous picture. These MUST be listed here so Compose forwards them from .env
+      # INTO the container — variables only referenced in .env are used for
+      # substitution, not passed in.
+      CLOUDFLARE_IMAGE_MODEL: ${CLOUDFLARE_IMAGE_MODEL:-@cf/black-forest-labs/flux-2-klein-4b}
+      CLOUDFLARE_IMAGE_EDIT_MODEL: ${CLOUDFLARE_IMAGE_EDIT_MODEL:-@cf/black-forest-labs/flux-2-klein-4b}
+      CLOUDFLARE_BASE_URL: ${CLOUDFLARE_BASE_URL:-https://api.cloudflare.com/client/v4}
+      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
       # Persist the downloaded ONNX embedding model (all-MiniLM-L6-v2) across restarts
       # so it isn't re-fetched (~90 MB) on every cold start.
       SPRING_AI_EMBEDDING_TRANSFORMER_RESOURCE_CACHE_DIRECTORY: /models

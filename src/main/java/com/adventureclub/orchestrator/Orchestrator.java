@@ -5,6 +5,7 @@ import com.adventureclub.agent.IllustratorAgent;
 import com.adventureclub.agent.OutputSafetyGate;
 import com.adventureclub.agent.InputSafetyGate;
 import com.adventureclub.agent.StoryDirectorAgent;
+import com.adventureclub.domain.CurrentAdventureResponse;
 import com.adventureclub.domain.Message;
 import com.adventureclub.domain.Session;
 import com.adventureclub.domain.TurnRequest;
@@ -13,11 +14,14 @@ import com.adventureclub.repository.MessageRepository;
 import com.adventureclub.repository.SessionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -283,9 +287,53 @@ public class Orchestrator {
     private Session createSession(TurnRequest request) {
         // childName is "explorer" for now — add proper onboarding in phase 2
         Session session = new Session("explorer", request.interests(), request.agentName());
+        // Tie the adventure to the signed-in hero so it can be resumed after they log
+        // in again (see currentAdventure). Null for anonymous/unauthenticated turns.
+        session.setUsername(currentUsername());
         Session saved = sessionRepository.save(session);
-        log.info("Created new session={} with interests='{}' and agent name='{}'", saved.getId(),
-                saved.getInterests(), saved.getAgentName());
+        log.info("Created new session={} for user='{}' with interests='{}' and agent name='{}'", saved.getId(),
+                saved.getUsername(), saved.getInterests(), saved.getAgentName());
         return saved;
+    }
+
+    /** The currently authenticated hero's username, or null when not authenticated. */
+    private static String currentUsername() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return null;
+        }
+        return auth.getName();
+    }
+
+    /**
+     * The hero's last in-progress adventure, so the frontend can resume it after the
+     * hero logs in again (even on a different browser/device). Returns empty when the
+     * hero has no adventure yet, or when their most recent one has no story beat (e.g.
+     * it was just restarted) — there is nothing meaningful to resume.
+     *
+     * @param username the signed-in hero's username
+     * @return the adventure to resume, or empty when there is nothing to resume
+     */
+    @Transactional(readOnly = true)
+    public Optional<CurrentAdventureResponse> currentAdventure(String username) {
+        return sessionRepository.findFirstByUsernameOrderByCreatedAtDesc(username)
+                .map(session -> {
+                    List<Message> history = messageRepository
+                            .findBySessionIdOrderByCreatedAtAsc(session.getId());
+                    String lastStory = null;
+                    for (int i = history.size() - 1; i >= 0; i--) {
+                        if (history.get(i).getRole() == Message.Role.ASSISTANT) {
+                            lastStory = history.get(i).getContent();
+                            break;
+                        }
+                    }
+                    String imageUrl = asDataUrl(
+                            session.getSceneImageData(), session.getSceneImageMediaType());
+                    return new CurrentAdventureResponse(
+                            session.getId(), session.getInterests(), session.getAgentName(),
+                            lastStory, imageUrl);
+                })
+                // Only resume a real, in-progress adventure (one with at least one beat).
+                .filter(r -> r.storyText() != null);
     }
 }

@@ -47,32 +47,37 @@ spring:
           max-tokens: 1024
           temperature: 0.8       # some creative variance for story generation
 
-# The Illustrator grows ONE living picture of the adventure with Pollinations AI
-# (https://pollinations.ai) via two endpoints:
-#  - No base picture yet: draw from scratch text-to-image with the free, keyless GET
-#    endpoint (base-url + /prompt/{prompt}), using `model` (flux is free/keyless).
+# The Illustrator grows ONE living picture of the adventure with Cloudflare
+# Workers AI (https://developers.cloudflare.com/workers-ai/) via its REST API
+# (base-url + /accounts/{account-id}/ai/run/{model}, i.e.
+# POST https://api.cloudflare.com/client/v4/accounts/{account-id}/ai/run/{model}),
+# authenticated with an API token sent as an `Authorization: Bearer
+# <CLOUDFLARE_API_TOKEN>` header. Inputs travel as multipart/form-data (a `prompt`
+# text part plus up to four binary `input_image_0..3` parts); the picture comes back
+# as a base64 string in `result.image`. The FLUX.2 [klein] model unifies text-to-image
+# generation AND image-to-image editing, so one model id serves both jobs:
+#  - No base picture yet: draw from scratch text-to-image with `model`
+#    (default @cf/black-forest-labs/flux-2-klein-4b).
 #  - A base picture exists (a fresh upload, else the previous scene the client sends
-#    back): paint the new beat ONTO it (image-to-image editing) via the OpenAI-
-#    compatible POST endpoint (edit-base-url + /v1/images/edits). The base picture is
-#    sent in the multipart BODY (NOT the URL) — this is what avoids the 414 URI Too
-#    Long error the old query-param data: URI approach hit on large images. Uses
-#    `edit-model`; Pollinations' editing models (e.g. kontext, gptimage) require an
-#    account token — set POLLINATIONS_API_KEY (see https://enter.pollinations.ai).
-# Env-driven so model/size/provider/key is a config change:
-#   POLLINATIONS_MODEL (default flux), POLLINATIONS_EDIT_MODEL (default kontext),
-#   POLLINATIONS_BASE_URL, POLLINATIONS_EDIT_BASE_URL, POLLINATIONS_API_KEY (empty),
-#   IMAGE_WIDTH/IMAGE_HEIGHT (default 768).
+#    back): paint the new beat ONTO it (image-to-image editing) with `edit-model`
+#    (also default @cf/black-forest-labs/flux-2-klein-4b). The base picture(s) travel
+#    as binary input_image_0.. multipart parts.
+# Needs a Cloudflare account id + API token — set CLOUDFLARE_ACCOUNT_ID and
+# CLOUDFLARE_API_TOKEN (see https://developers.cloudflare.com/workers-ai/).
+# Env-driven so model/provider/key is a config change:
+#   CLOUDFLARE_IMAGE_MODEL (default @cf/black-forest-labs/flux-2-klein-4b),
+#   CLOUDFLARE_IMAGE_EDIT_MODEL (default @cf/black-forest-labs/flux-2-klein-4b),
+#   CLOUDFLARE_BASE_URL (default https://api.cloudflare.com/client/v4),
+#   CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN.
 # Set IMAGES_ENABLED=false to turn pictures off entirely.
 adventureclub:
   images:
     enabled: ${IMAGES_ENABLED:true}
-    base-url: ${POLLINATIONS_BASE_URL:https://image.pollinations.ai}
-    edit-base-url: ${POLLINATIONS_EDIT_BASE_URL:https://gen.pollinations.ai}
-    model: ${POLLINATIONS_MODEL:flux}
-    edit-model: ${POLLINATIONS_EDIT_MODEL:kontext}
-    api-key: ${POLLINATIONS_API_KEY}
-    width: ${IMAGE_WIDTH:768}
-    height: ${IMAGE_HEIGHT:768}
+    base-url: ${CLOUDFLARE_BASE_URL:https://api.cloudflare.com/client/v4}
+    account-id: ${CLOUDFLARE_ACCOUNT_ID:}
+    model: ${CLOUDFLARE_IMAGE_MODEL:@cf/black-forest-labs/flux-2-klein-4b}
+    edit-model: ${CLOUDFLARE_IMAGE_EDIT_MODEL:@cf/black-forest-labs/flux-2-klein-4b}
+    api-key: ${CLOUDFLARE_API_TOKEN:}
 
 logging:
   level:

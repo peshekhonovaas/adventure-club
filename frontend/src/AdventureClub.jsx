@@ -1,7 +1,57 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const API_BASE = "";  // change to "http://localhost:8080" if running frontend separately
 const DEFAULT_AGENT_NAME = "Grogu";
+
+// Persist the running adventure so a page refresh restores it instead of dropping
+// the child back on the onboarding page. Only "New adventure" (handleRestart) clears it.
+const STORAGE_KEY = "adventureclub.session";
+function loadPersisted() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+}
+function clearPersisted() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+}
+
+// ── Authorization (real backend auth via Spring Security) ───────
+// A magical sign-in gate that stands in front of the adventure, backed by the
+// server's /auth/* endpoints. Accounts live in Postgres (BCrypt-hashed secret
+// words); a stateful HTTP session (JSESSIONID cookie) keeps the hero signed in.
+// We only cache the signed-in hero NAME in localStorage for an instant, flicker-
+// free render on reload — the cookie is the real credential and /auth/me is the
+// source of truth (see the mount effect in the main component).
+const AUTH_SESSION_KEY = "adventureclub.auth";
+function loadAuthedUser() {
+    try { return localStorage.getItem(AUTH_SESSION_KEY); } catch { return null; }
+}
+function saveAuthedUser(name) {
+    try { localStorage.setItem(AUTH_SESSION_KEY, name); } catch { /* ignore */ }
+}
+function clearAuthedUser() {
+    try { localStorage.removeItem(AUTH_SESSION_KEY); } catch { /* ignore */ }
+}
+
+// Call an /auth/* endpoint. `credentials: "include"` makes the browser send and
+// store the session cookie. On failure, surfaces the server's friendly message.
+async function authRequest(path, body) {
+    const res = await fetch(`${API_BASE}/auth/${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    if (res.status === 204) return null;
+    let data = null;
+    try { data = await res.json(); } catch { /* no body */ }
+    if (!res.ok) {
+        const msg = data?.message || "Something went wrong — please try again!";
+        throw new Error(msg);
+    }
+    return data;
+}
 
 const STYLE = `
   @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;700;800;900&display=swap');
@@ -64,7 +114,13 @@ const STYLE = `
      Nothing outside it is reachable. */
   .app {
     position: relative; z-index: 1;
-    width: 100%; max-width: 720px;
+    /* FIXED width (was width:100%;max-width:720px): as a flex item inside the
+       centered body, an auto flex-basis let the column shrink to its content —
+       so while the GM bubble only showed "Painting your picture…" the whole app
+       was ~372px wide and jumped to 720px once the story text arrived. A fixed
+       width (capped to the viewport) keeps it 720px from the very first render. */
+    width: 720px; max-width: 100%;
+    flex-shrink: 0;
     height: 100dvh;          /* was: min-height — allowed growing past viewport */
     overflow: hidden;        /* clips anything that would otherwise escape */
     display: flex; flex-direction: column;
@@ -72,21 +128,28 @@ const STYLE = `
   }
 
   /* all regions are rigid (won't grow or shrink) EXCEPT .picture-panel */
-  .app-header, .scene, .gm-row, .draw-btn, .input-row,
-  .blocked-banner, .error-banner { flex-shrink: 0; }
+  .app-header, .scene, .gm-row, .draw-btn, .input-row { flex-shrink: 0; }
 
   /* header */
   .app-header { text-align: center; padding: 8px 16px 2px; position: relative; }
+  /* Header icon buttons: icon only (no text label); the action is conveyed by a
+     clear picture + a native tooltip (title) hint. Round, fixed-size targets. */
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--surface); border: 1px solid var(--border);
+    font-size: 20px; line-height: 1; cursor: pointer;
+    transition: border-color .15s, transform .15s, box-shadow .15s;
+  }
+  .icon-btn:disabled { opacity: .4; cursor: not-allowed; }
   .restart-btn {
     position: absolute; top: 8px; right: 16px;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 20px; padding: 6px 12px;
-    color: var(--txt-dim); font-family: 'Nunito', sans-serif; font-size: 12px; font-weight: 800;
-    cursor: pointer; line-height: 1;
-    transition: color .15s, border-color .15s, transform .15s;
   }
-  .restart-btn:hover:not(:disabled) { color: #fff; border-color: rgba(255,184,48,.6); transform: translateY(-1px); }
-  .restart-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .restart-btn:hover:not(:disabled) { border-color: rgba(255,184,48,.6); transform: translateY(-1px); box-shadow: 0 0 14px rgba(255,184,48,.35); }
+  .logout-btn {
+    position: absolute; top: 8px; left: 16px;
+  }
+  .logout-btn:hover:not(:disabled) { border-color: rgba(255,107,107,.6); transform: translateY(-1px); box-shadow: 0 0 14px rgba(255,107,107,.35); }
   .app-title {
     font-family: 'Fredoka One', cursive; font-size: 24px; color: #fff;
     text-shadow: 0 0 20px rgba(160,60,255,.5);
@@ -282,11 +345,73 @@ const STYLE = `
   .start-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(255,140,0,.6); }
   .start-btn:disabled { opacity: .5; cursor: not-allowed; }
 
-  /* banners */
-  .blocked-banner, .error-banner {
-    margin: 10px 16px 0; border-radius: 14px; padding: 10px 14px;
+  /* authorization page — reuses the onboarding column layout */
+  .auth-fields { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 14px; }
+  .auth-error {
+    max-width: 380px; width: 100%;
+    background: rgba(255,107,107,.1); border: 1px solid rgba(255,107,107,.35);
+    color: rgba(255,180,180,.9); border-radius: 14px; padding: 10px 14px;
     font-size: 13px; text-align: center;
   }
+  .auth-toggle { font-size: 14px; color: var(--txt-dim); }
+  .auth-toggle button {
+    background: none; border: none; cursor: pointer;
+    color: var(--amber); font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 800;
+    text-decoration: underline; padding: 0; margin-left: 4px;
+  }
+  .auth-toggle button:hover { color: #fff; }
+
+  /* change-secret-word modal — overlays the whole app */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(6,8,20,.72); backdrop-filter: blur(3px);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-card {
+    width: 100%; max-width: 420px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 26px 24px;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    text-align: center;
+  }
+  .modal-card h2 {
+    font-family: 'Fredoka One', cursive; font-size: 22px; color: #fff; margin: 0;
+  }
+  .modal-card p { font-size: 14px; color: var(--txt-dim); margin: 0; }
+  .modal-success {
+    max-width: 380px; width: 100%;
+    background: rgba(120,220,140,.12); border: 1px solid rgba(120,220,140,.4);
+    color: #b7f0c2; border-radius: 12px; padding: 10px 14px;
+    font-size: 13px; text-align: center;
+  }
+  .modal-actions { display: flex; gap: 10px; width: 100%; max-width: 380px; }
+  .modal-actions .start-btn { flex: 1; margin: 0; }
+  .modal-cancel {
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; cursor: pointer;
+    color: var(--txt-dim); font-family: 'Nunito', sans-serif; font-size: 15px; font-weight: 800;
+    transition: color .15s, border-color .15s;
+  }
+  .modal-cancel:hover:not(:disabled) { color: #fff; border-color: rgba(255,255,255,.35); }
+  .modal-cancel:disabled { opacity: .4; cursor: not-allowed; }
+  .change-pw-btn {
+    position: absolute; top: 8px; left: 64px;
+  }
+  .change-pw-btn:hover:not(:disabled) { border-color: rgba(255,184,48,.6); transform: translateY(-1px); box-shadow: 0 0 14px rgba(255,184,48,.35); }
+
+  /* banners — overlaid on top of the picture panel (position:absolute) so they never
+     steal height from the flexible .picture-panel and never shift the layout when they
+     appear/disappear while a message or picture is generating. */
+  .banner-overlay {
+    position: absolute; left: 16px; right: 16px; bottom: 10px; z-index: 5;
+    pointer-events: none;
+  }
+  .blocked-banner, .error-banner {
+    border-radius: 14px; padding: 10px 14px;
+    font-size: 13px; text-align: center;
+    pointer-events: auto;
+  }
+  .blocked-banner + .error-banner { margin-top: 8px; }
   .blocked-banner { background: rgba(255,107,107,.1); border: 1px solid rgba(255,107,107,.3); color: rgba(255,180,180,.85); }
   .error-banner   { background: rgba(255,80,80,.1);  border: 1px solid rgba(255,80,80,.3);  color: rgba(255,160,160,.85); }
 `;
@@ -427,19 +552,264 @@ function Onboarding({ onStart, agentName }) {
     );
 }
 
+// ── Authorization page ──────────────────────────────────────────
+function AuthPage({ onAuthed }) {
+    const [mode, setMode]         = useState("login"); // "login" | "register"
+    const [name, setName]         = useState("");
+    const [password, setPassword] = useState("");
+    const [confirm, setConfirm]   = useState("");
+    const [error, setError]       = useState(null);
+    const [loading, setLoading]   = useState(false);
+    const isRegister = mode === "register";
+
+    async function submit() {
+        if (loading) return;
+        const trimmed = name.trim();
+        if (!trimmed || !password) { setError("Please fill in your name and secret word."); return; }
+        if (isRegister && password !== confirm) { setError("The secret words don't match — try again!"); return; }
+        setError(null); setLoading(true);
+        try {
+            const data = await authRequest(isRegister ? "register" : "login", {
+                username: trimmed, password,
+            });
+            const authedName = data?.username ?? trimmed;
+            saveAuthedUser(authedName);
+            onAuthed(authedName);
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function switchMode() {
+        setMode(isRegister ? "login" : "register");
+        setError(null); setPassword(""); setConfirm("");
+    }
+
+    return (
+        <div className="onboarding">
+            <div className="onboarding-hero">🔐</div>
+            <h1>{isRegister ? "Join the Adventure Club" : "Welcome Back, Hero!"}</h1>
+            <p>{isRegister ? "Pick a hero name and a secret word to begin." : "Sign in with your hero name and secret word."}</p>
+            {error && <div className="auth-error">⚠️ {error}</div>}
+            <div className="auth-fields">
+                <input
+                    className="interest-input"
+                    placeholder="Your hero name"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && submit()}
+                    maxLength={40}
+                    autoFocus
+                />
+                <input
+                    className="interest-input"
+                    type="password"
+                    placeholder="Your secret word"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && submit()}
+                    maxLength={60}
+                />
+                {isRegister && (
+                    <input
+                        className="interest-input"
+                        type="password"
+                        placeholder="Repeat your secret word"
+                        value={confirm}
+                        onChange={e => setConfirm(e.target.value)}
+                        onKeyDown={e => e.key === "Enter" && submit()}
+                        maxLength={60}
+                    />
+                )}
+            </div>
+            <button
+                className="start-btn"
+                disabled={loading || !name.trim() || !password || (isRegister && !confirm)}
+                onClick={submit}
+            >
+                {loading
+                    ? (isRegister ? "Creating your hero…" : "Opening the portal…")
+                    : (isRegister ? "Create my hero! ✨" : "Enter the portal! ⚔️")}
+            </button>
+            <div className="auth-toggle">
+                {isRegister ? "Already a hero?" : "New to the club?"}
+                <button onClick={switchMode}>{isRegister ? "Log in" : "Sign up"}</button>
+            </div>
+        </div>
+    );
+}
+
+// ── Change secret word modal ────────────────────────────────────
+// Lets a signed-in hero change their secret word. Calls the backend
+// /auth/change-password (current word re-verified server-side) and shows a
+// friendly success/error message.
+function ChangePasswordModal({ onClose }) {
+    const [current, setCurrent] = useState("");
+    const [next, setNext]       = useState("");
+    const [confirm, setConfirm] = useState("");
+    const [error, setError]     = useState(null);
+    const [done, setDone]       = useState(false);
+    const [loading, setLoading] = useState(false);
+
+    async function submit() {
+        if (loading) return;
+        if (!current || !next) { setError("Please fill in both secret words."); return; }
+        if (next !== confirm) { setError("The new secret words don't match — try again!"); return; }
+        if (next === current) { setError("Your new secret word should be different from the old one."); return; }
+        setError(null); setLoading(true);
+        try {
+            await authRequest("change-password", { currentPassword: current, newPassword: next });
+            setDone(true);
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}>
+                <div className="onboarding-hero">🔑</div>
+                <h2>Change your secret word</h2>
+                {done ? (
+                    <>
+                        <div className="modal-success">✅ Your secret word has been changed!</div>
+                        <button className="start-btn" onClick={onClose}>Back to the adventure ⚔️</button>
+                    </>
+                ) : (
+                    <>
+                        <p>Enter your current secret word, then choose a new one.</p>
+                        {error && <div className="auth-error">⚠️ {error}</div>}
+                        <div className="auth-fields">
+                            <input
+                                className="interest-input"
+                                type="password"
+                                placeholder="Current secret word"
+                                value={current}
+                                onChange={e => setCurrent(e.target.value)}
+                                onKeyDown={e => e.key === "Enter" && submit()}
+                                maxLength={60}
+                                autoFocus
+                            />
+                            <input
+                                className="interest-input"
+                                type="password"
+                                placeholder="New secret word"
+                                value={next}
+                                onChange={e => setNext(e.target.value)}
+                                onKeyDown={e => e.key === "Enter" && submit()}
+                                maxLength={60}
+                            />
+                            <input
+                                className="interest-input"
+                                type="password"
+                                placeholder="Repeat new secret word"
+                                value={confirm}
+                                onChange={e => setConfirm(e.target.value)}
+                                onKeyDown={e => e.key === "Enter" && submit()}
+                                maxLength={60}
+                            />
+                        </div>
+                        <div className="modal-actions">
+                            <button className="modal-cancel" onClick={onClose} disabled={loading}>Cancel</button>
+                            <button
+                                className="start-btn"
+                                disabled={loading || !current || !next || !confirm}
+                                onClick={submit}
+                            >
+                                {loading ? "Saving…" : "Save ✨"}
+                            </button>
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+}
+
 // ── Main ────────────────────────────────────────────────────────
 export default function AdventureClub() {
-    const [phase, setPhase]           = useState("onboarding");
+    // Restore any adventure that was in progress before a refresh.
+    const persisted                   = loadPersisted();
+    const [authedUser, setAuthedUser] = useState(loadAuthedUser());
+    const [phase, setPhase]           = useState(persisted?.phase ?? "onboarding");
     const [agentName]                 = useState(DEFAULT_AGENT_NAME);
-    const [sessionId, setSessionId]   = useState(null);
-    const [interests, setInterests]   = useState("");
-    const [story, setStory]           = useState("");
+    const [sessionId, setSessionId]   = useState(persisted?.sessionId ?? null);
+    const [interests, setInterests]   = useState(persisted?.interests ?? "");
+    const [story, setStory]           = useState(persisted?.story ?? "");
     const [loading, setLoading]       = useState(false);
     const [blocked, setBlocked]       = useState(false);
     const [error, setError]           = useState(null);
     const [message, setMessage]       = useState("");
-    const [sceneImage, setSceneImage] = useState(null);
+    const [sceneImage, setSceneImage] = useState(persisted?.sceneImage ?? null);
+    const [showChangePw, setShowChangePw] = useState(false);
     const fileInputRef                = useRef(null);
+
+    // Keep the persisted snapshot in sync so a refresh mid-adventure resumes it.
+    useEffect(() => {
+        if (phase === "onboarding") { clearPersisted(); return; }
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                phase, sessionId, interests, story, sceneImage,
+            }));
+        } catch { /* quota exceeded (large image) — refresh will fall back to onboarding */ }
+    }, [phase, sessionId, interests, story, sceneImage]);
+
+    // On mount, confirm the session cookie is still valid with the server
+    // (/auth/me is the source of truth). The cached name only avoids a flicker;
+    // if the cookie has expired, drop back to the sign-in gate and clear state.
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data?.username) {
+                        saveAuthedUser(data.username); setAuthedUser(data.username);
+                        // Nothing persisted locally (e.g. a fresh browser/device) — pull the
+                        // hero's last adventure from the server so they can continue it.
+                        if (!persisted) await restoreAdventure();
+                        return;
+                    }
+                }
+                forceSignOut();
+            } catch { /* network hiccup — keep the cached view, later calls will re-check */ }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Clears all local adventure + auth state and returns to the sign-in gate.
+    // Used when the server reports we are no longer authenticated (401).
+    function forceSignOut() {
+        clearPersisted();
+        clearAuthedUser();
+        setStory(""); setSceneImage(null); setMessage("");
+        setBlocked(false); setError(null);
+        setInterests(""); setSessionId(null);
+        setPhase("onboarding");
+        setAuthedUser(null);
+    }
+
+    // Load the signed-in hero's last in-progress adventure from the server (if any)
+    // and drop straight into it, so a hero can continue their last quest after logging
+    // in again — even on a different browser or device where nothing is cached locally.
+    async function restoreAdventure() {
+        try {
+            const res = await fetch(`${API_BASE}/session/current`, { credentials: "include" });
+            if (res.status !== 200) return;   // 204 = nothing to resume, 401 = handled elsewhere
+            const data = await res.json();
+            if (!data?.sessionId || !data?.storyText) return;
+            setSessionId(data.sessionId);
+            setInterests(data.interests ?? "");
+            setStory(data.storyText);
+            setSceneImage(data.imageUrl ?? null);
+            setBlocked(false); setError(null); setMessage("");
+            setPhase("quest");
+        } catch { /* network hiccup — stay on onboarding, the hero can start fresh */ }
+    }
 
     async function sendTurn(childMessage, currentInterests, currentSessionId, image = null) {
         setLoading(true); setBlocked(false); setError(null);
@@ -447,6 +817,7 @@ export default function AdventureClub() {
             const res = await fetch(`${API_BASE}/session/turn`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "include",
                 body: JSON.stringify({
                     sessionId: currentSessionId ?? null,
                     interests: currentInterests,
@@ -455,6 +826,7 @@ export default function AdventureClub() {
                     ...(image ? { imageData: image.data, imageMediaType: image.mediaType } : {}),
                 }),
             });
+            if (res.status === 401) { forceSignOut(); return; }
             if (!res.ok) throw new Error(`Server error ${res.status}`);
             const data = await res.json();
             if (data.blocked) { setBlocked(true); }
@@ -490,8 +862,10 @@ export default function AdventureClub() {
             const res = await fetch(`${API_BASE}/session/undo`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "include",
                 body: JSON.stringify({ sessionId }),
             });
+            if (res.status === 401) { forceSignOut(); return; }
             if (!res.ok) throw new Error(`Server error ${res.status}`);
             const data = await res.json();
             setSceneImage(data.imageUrl ?? null);
@@ -513,18 +887,37 @@ export default function AdventureClub() {
         setInterests("");
         setSessionId(null);
         setPhase("onboarding");
+        clearPersisted();
         // Best-effort server cleanup of the old session's story history and picture(s).
         if (currentSessionId) {
             try {
                 await fetch(`${API_BASE}/session/restart`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
+                    credentials: "include",
                     body: JSON.stringify({ sessionId: currentSessionId }),
                 });
             } catch (e) {
                 // Best-effort — even if the server call fails the user still lands on onboarding.
             }
         }
+    }
+
+    function handleAuthed(name) {
+        setAuthedUser(name);
+        // Just signed in — resume the hero's last adventure from the server, if any.
+        restoreAdventure();
+    }
+
+    async function handleLogout() {
+        if (loading) return;
+        if (!window.confirm("Sign out? Your current adventure will be cleared.")) return;
+        // End the server session (best-effort), then clear all local adventure +
+        // auth state and fall back to the authorization gate.
+        try {
+            await fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
+        } catch { /* best-effort — sign out locally regardless */ }
+        forceSignOut();
     }
 
     function handleSaveImage() {
@@ -551,13 +944,34 @@ export default function AdventureClub() {
         reader.readAsDataURL(file);
     }
 
+    // Gate everything behind the authorization page until a player is signed in.
+    if (!authedUser) return (
+        <>
+            <style>{STYLE}</style>
+            <div className="stars-bg"/>
+            <div className="app">
+                <AuthPage onAuthed={handleAuthed}/>
+            </div>
+        </>
+    );
+
     if (phase === "onboarding") return (
         <>
             <style>{STYLE}</style>
             <div className="stars-bg"/>
             <div className="app">
+                <button
+                    className="icon-btn change-pw-btn"
+                    style={{ left: 16 }}
+                    onClick={() => setShowChangePw(true)}
+                    aria-label="Change your secret word"
+                    title="Change your secret word"
+                >
+                    🔑
+                </button>
                 <Onboarding onStart={handleStart} agentName={agentName}/>
             </div>
+            {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)}/>}
         </>
     );
 
@@ -568,16 +982,34 @@ export default function AdventureClub() {
             <div className="app">
 
                 <div className="app-header">
+                    <button
+                        className="icon-btn logout-btn"
+                        onClick={handleLogout}
+                        disabled={loading}
+                        aria-label="Sign out"
+                        title="Sign out"
+                    >
+                        🚪
+                    </button>
+                    <button
+                        className="icon-btn change-pw-btn"
+                        onClick={() => setShowChangePw(true)}
+                        disabled={loading}
+                        aria-label="Change your secret word"
+                        title="Change your secret word"
+                    >
+                        🔑
+                    </button>
                     <div className="app-title">✦ Adventure Club ✦</div>
                     <div className="app-subtitle">A magical quest with {agentName}</div>
                     <button
-                        className="restart-btn"
+                        className="icon-btn restart-btn"
                         onClick={handleRestart}
                         disabled={loading}
                         aria-label="Start a new adventure"
                         title="Start a new adventure"
                     >
-                        🔄 New adventure
+                        🔄
                     </button>
                 </div>
 
@@ -595,12 +1027,16 @@ export default function AdventureClub() {
                     onSave={handleSaveImage}
                 />
 
-                {blocked && (
-                    <div className="blocked-banner">
-                        ⚠️ {agentName} couldn't send that response — try asking something different!
+                {(blocked || error) && (
+                    <div className="banner-overlay">
+                        {blocked && (
+                            <div className="blocked-banner">
+                                ⚠️ {agentName} couldn't send that response — try asking something different!
+                            </div>
+                        )}
+                        {error && <div className="error-banner">⚡ {error}</div>}
                     </div>
                 )}
-                {error && <div className="error-banner">⚡ {error}</div>}
 
                 <button className="draw-btn" onClick={() => fileInputRef.current?.click()} disabled={loading}>
                     <span className="db-emoji">🎨</span>
@@ -630,6 +1066,7 @@ export default function AdventureClub() {
                 </div>
 
             </div>
+            {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)}/>}
         </>
     );
 }

@@ -20,6 +20,12 @@ public class Session {
     @Column(nullable = false)
     private String childName;
 
+    // The "hero" (authenticated username) who owns this adventure. Nullable for
+    // legacy/anonymous sessions created before auth existed. Lets us reload the
+    // hero's last adventure after they log in again (even on another device).
+    @Column
+    private String username;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String interests;    // raw string: "dragons, pokemon" — no JSON needed in v1
 

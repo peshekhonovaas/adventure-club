@@ -1,13 +1,17 @@
 package com.adventureclub.controller;
 
+import com.adventureclub.domain.CurrentAdventureResponse;
 import com.adventureclub.domain.RestartRequest;
 import com.adventureclub.domain.TurnRequest;
 import com.adventureclub.domain.TurnResponse;
 import com.adventureclub.domain.UndoRequest;
 import com.adventureclub.orchestrator.Orchestrator;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.security.Principal;
 
 /**
  * One endpoint. That is all week 1 needs.
@@ -34,6 +38,25 @@ public class SessionController {
     public ResponseEntity<TurnResponse> turn(@Valid @RequestBody TurnRequest request) {
         TurnResponse response = orchestrator.processTurn(request);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * GET /session/current
+     *   Returns the signed-in hero's last in-progress adventure so the client can
+     *   resume it after they log in again (even on a different browser/device):
+     *   { "sessionId": "uuid", "interests": "...", "agentName": "...",
+     *     "storyText": "...", "imageUrl": "data:..." }.
+     *
+     * Responds 204 No Content when the hero has no adventure to resume.
+     */
+    @GetMapping("/current")
+    public ResponseEntity<CurrentAdventureResponse> current(Principal principal) {
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        return orchestrator.currentAdventure(principal.getName())
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     /**
